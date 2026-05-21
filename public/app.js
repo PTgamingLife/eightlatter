@@ -48,6 +48,36 @@ const monthStartTerms = [
   { month: 1, day: 6, order: 11 },
 ];
 
+const elementCreates = {
+  wood: "fire",
+  fire: "earth",
+  earth: "metal",
+  metal: "water",
+  water: "wood",
+};
+
+const hiddenStemRatios = {
+  子: [{ stem: "癸", ratio: 1 }],
+  丑: [{ stem: "己", ratio: 0.33 }, { stem: "癸", ratio: 0.33 }, { stem: "辛", ratio: 0.33 }],
+  寅: [{ stem: "甲", ratio: 0.5 }, { stem: "丙", ratio: 0.4 }, { stem: "戊", ratio: 0.1 }],
+  卯: [{ stem: "乙", ratio: 1 }],
+  辰: [{ stem: "戊", ratio: 0.33 }, { stem: "癸", ratio: 0.33 }, { stem: "乙", ratio: 0.33 }],
+  巳: [{ stem: "丙", ratio: 0.5 }, { stem: "戊", ratio: 0.4 }, { stem: "庚", ratio: 0.1 }],
+  午: [{ stem: "丁", ratio: 0.5 }, { stem: "己", ratio: 0.5 }],
+  未: [{ stem: "己", ratio: 0.4 }, { stem: "丁", ratio: 0.3 }, { stem: "乙", ratio: 0.3 }],
+  申: [{ stem: "庚", ratio: 0.5 }, { stem: "壬", ratio: 0.4 }, { stem: "戊", ratio: 0.1 }],
+  酉: [{ stem: "辛", ratio: 1 }],
+  戌: [{ stem: "戊", ratio: 0.4 }, { stem: "辛", ratio: 0.3 }, { stem: "丁", ratio: 0.3 }],
+  亥: [{ stem: "壬", ratio: 0.7 }, { stem: "甲", ratio: 0.3 }],
+};
+
+const pillarWeights = {
+  year: { stem: 10, branch: 10 },
+  month: { stem: 12, branch: 30 },
+  day: { stem: 0, branch: 15 },
+  hour: { stem: 8, branch: 10 },
+};
+
 const elementNames = {
   wood: "創意擴展",
   fire: "表達影響",
@@ -683,10 +713,7 @@ function buildProfile(user) {
   const chart = calculateBazi(user.birthDate, user.birthTime);
   const seed = hash(`${user.birthDate}${user.birthTime}${user.name}${chart.fourPillars}`);
   const dayMaster = chart.day.stem;
-  const values = tenTalentMap.map((talent, index) => ({
-    ...talent,
-    value: 55 + ((seed + index * 13) % 41),
-  })).sort((a, b) => b.value - a.value);
+  const values = calculateTalentDistribution(chart);
   const strongest = values[0];
 
   return {
@@ -757,6 +784,76 @@ function getSolarMonthOrder(month, day) {
   if (term && day >= term.day) return term.order;
   const previous = monthStartTerms.find((item) => item.month === month - 1);
   return previous ? previous.order : 10;
+}
+
+function calculateTalentDistribution(chart) {
+  const totals = Object.fromEntries(tenTalentMap.map((talent) => [talent.id, 0]));
+  const dayStem = chart.day.stem;
+  const pillars = [
+    ["year", chart.year],
+    ["month", chart.month],
+    ["day", chart.day],
+    ["hour", chart.hour],
+  ];
+
+  for (const [position, pillar] of pillars) {
+    const weights = pillarWeights[position];
+
+    if (weights.stem > 0) {
+      totals[getTalentGroup(dayStem, pillar.stem)] += weights.stem;
+    }
+
+    for (const hidden of hiddenStemRatios[pillar.branch.name] || []) {
+      const hiddenStem = stems.find((stem) => stem.name === hidden.stem);
+      totals[getTalentGroup(dayStem, hiddenStem)] += weights.branch * hidden.ratio;
+    }
+  }
+
+  const max = Math.max(...Object.values(totals), 1);
+
+  return tenTalentMap
+    .map((talent) => ({
+      ...talent,
+      value: Math.round((totals[talent.id] / max) * 100),
+      raw: Number(totals[talent.id].toFixed(2)),
+    }))
+    .sort((a, b) => b.value - a.value);
+}
+
+function getTalentGroup(dayStem, targetStem) {
+  if (!targetStem) return "resource";
+
+  if (targetStem.element === dayStem.element) {
+    return "peer";
+  }
+
+  if (elementCreates[targetStem.element] === dayStem.element) {
+    return "resource";
+  }
+
+  if (elementCreates[dayStem.element] === targetStem.element) {
+    return "output";
+  }
+
+  if (elementControls(dayStem.element) === targetStem.element) {
+    return "wealth";
+  }
+
+  if (elementControls(targetStem.element) === dayStem.element) {
+    return "influence";
+  }
+
+  return "resource";
+}
+
+function elementControls(element) {
+  return {
+    wood: "earth",
+    earth: "water",
+    water: "fire",
+    fire: "metal",
+    metal: "wood",
+  }[element];
 }
 
 function julianDayNumber(year, month, day) {
