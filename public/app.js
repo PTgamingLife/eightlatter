@@ -180,6 +180,14 @@ function renderAuth() {
 
 async function setupRuntime() {
   try {
+    if (window.EIGHTLATTER_CONFIG) {
+      runtime.config = window.EIGHTLATTER_CONFIG;
+      if (runtime.config.supabaseUrl && runtime.config.supabaseAnonKey && window.supabase) {
+        runtime.supabase = window.supabase.createClient(runtime.config.supabaseUrl, runtime.config.supabaseAnonKey);
+      }
+      return;
+    }
+
     const response = await fetch("/app-config");
     runtime.config = response.ok ? await response.json() : {};
 
